@@ -24,3 +24,7 @@ Thumbs.db
 # Cloned repos / non-submission dirs
 OpenEnv/
 Skills/
+
+# Non-submission files
+Guidelines.txt
+Problem_statement.txt
