@@ -1,0 +1,14 @@
+__pycache__
+*.pyc
+*.pyo
+.git
+.gitignore
+OpenEnv/
+Skills/
+Guidelines.txt
+Problem_statement.txt
+*.md
+!data_clean_env/README.md
+.env
+.venv
+node_modules
