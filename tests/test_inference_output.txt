@@ -1,0 +1,35 @@
+[START] task=easy env=data_clean_env model=scripted
+[STEP] step=1 action=inspect reward=0.00 done=false error=null
+[STEP] step=2 action=fix_format(revenue) reward=0.00 done=false error=null
+[STEP] step=3 action=cast_type(revenue) reward=0.00 done=false error=null
+[STEP] step=4 action=cast_type(age) reward=0.00 done=false error=null
+[STEP] step=5 action=fill_missing(age) reward=0.02 done=false error=null
+[STEP] step=6 action=fill_missing(email) reward=0.01 done=false error=null
+[STEP] step=7 action=submit reward=0.88 done=true error=null
+[END] success=true steps=7 rewards=0.00,0.00,0.00,0.00,0.02,0.01,0.88
+
+[START] task=medium env=data_clean_env model=scripted
+[STEP] step=1 action=inspect reward=0.00 done=false error=null
+[STEP] step=2 action=remove_duplicates reward=0.01 done=false error=null
+[STEP] step=3 action=standardize(region) reward=0.12 done=false error=null
+[STEP] step=4 action=fill_missing(unit_price) reward=0.01 done=false error=null
+[STEP] step=5 action=filter_outliers(quantity) reward=0.03 done=false error=null
+[STEP] step=6 action=submit reward=0.86 done=true error=null
+[END] success=true steps=6 rewards=0.00,0.01,0.12,0.01,0.03,0.86
+
+[START] task=hard env=data_clean_env model=scripted
+[STEP] step=1 action=inspect reward=0.00 done=false error=null
+[STEP] step=2 action=remove_duplicates reward=0.00 done=false error=null
+[STEP] step=3 action=standardize(department) reward=0.11 done=false error=null
+[STEP] step=4 action=filter_outliers(salary) reward=0.01 done=false error=null
+[STEP] step=5 action=fill_missing(salary) reward=0.01 done=false error=null
+[STEP] step=6 action=fill_missing(performance_score) reward=0.01 done=false error=null
+[STEP] step=7 action=fill_missing(department) reward=0.04 done=false error=null
+[STEP] step=8 action=fill_missing(phone) reward=0.00 done=false error=null
+[STEP] step=9 action=submit reward=0.65 done=true error=null
+[END] success=true steps=9 rewards=0.00,0.00,0.11,0.01,0.01,0.01,0.04,0.00,0.65
+
+Run date    : 2026-04-05
+Python      : 3.11
+Mode        : scripted policy (no LLM, HF_TOKEN not set)
+Seed        : 42

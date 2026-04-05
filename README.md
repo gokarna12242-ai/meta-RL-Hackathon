@@ -13,27 +13,215 @@ tags:
 
 # 🧹 Data Cleaning Environment
 
+> **OpenEnv RL Hackathon Submission** — A complete, spec-compliant environment for training and evaluating RL agents on real-world tabular data cleaning tasks.
+
 An OpenEnv environment that simulates **real-world tabular data cleaning** — the task that occupies ~80% of a data scientist's time. An RL agent receives a messy dataset and must issue cleaning commands to improve data quality, then submit for grading.
 
 ## Why Data Cleaning?
 
 | Aspect | Detail |
 |--------|--------|
-| **Real-world utility** | Data cleaning is the #1 bottleneck in every ML pipeline. Training agents to clean data has immediate production value. |
-| **Rich action space** | 10 distinct cleaning commands with parameters — far more nuanced than binary actions. |
-| **Continuous reward signal** | Quality score improves incrementally with each successful fix, providing dense reward. |
-| **Difficulty progression** | Three tasks from simple (5-col, 20-row) to complex (10-col, 88-row with referential integrity). |
+| **Real-world utility** | Data cleaning is the #1 bottleneck in every ML pipeline. Training agents to automate it has immediate production value. |
+| **Rich action space** | 10 distinct cleaning commands with parameters — far more nuanced than binary or discrete actions. |
+| **Dense reward signal** | Quality score improves incrementally after each successful fix, providing shaped reward over the full trajectory. |
+| **Difficulty progression** | Three tasks: simple (5-col, 20-row) → complex (10-col, 88-row with referential integrity). |
 
-## Quick Start
+---
 
-### Install
+## Project Structure
 
-```bash
-pip install openenv-core[core]>=0.2.2
-pip install git+https://huggingface.co/spaces/<username>/data-clean-env
+```
+meta-RL-Hackathon/
+├── Dockerfile                      # Root Dockerfile — builds the HF Space server
+├── README.md                       # This file (also doubles as HF Space card)
+├── inference.py                    # Baseline inference script (hackathon entry point)
+├── test_local.py                   # Local validation test suite (no server needed)
+├── .dockerignore
+├── .gitignore
+├── data_clean_env/                 # OpenEnv environment package
+│   ├── __init__.py                 # Package exports (DataCleanEnv, DataCleanAction, ...)
+│   ├── models.py                   # Typed Pydantic models: Action, Observation, State
+│   ├── client.py                   # DataCleanEnv — EnvClient WebSocket wrapper
+│   ├── openenv.yaml                # OpenEnv spec manifest
+│   ├── pyproject.toml              # Package metadata & dependencies
+│   └── server/
+│       ├── __init__.py
+│       ├── app.py                  # FastAPI application (create_app)
+│       ├── environment.py          # DataCleanEnvironment — all core logic & graders
+│       └── Dockerfile              # Inner Dockerfile for standalone server build
+└── tests/
+    ├── baseline_scores.txt         # Summary of verified baseline scores
+    ├── test_inference_output.txt   # Captured output of inference.py
+    └── test_validation_output.txt  # Captured output of test_local.py
 ```
 
-### Usage (async)
+---
+
+## Prerequisites
+
+- Python 3.10 or 3.11
+- pip
+- Docker (for container builds)
+- Git
+
+---
+
+## Setup
+
+### 1. Clone the Repository
+
+```bash
+git clone https://github.com/gokarna12242-ai/meta-RL-Hackathon.git
+cd meta-RL-Hackathon
+```
+
+### 2. Install Dependencies
+
+**Option A — install the environment package in editable mode** (recommended for development):
+
+```bash
+pip install "openenv-core[core]>=0.2.2"
+pip install -e data_clean_env/
+```
+
+**Option B — install dependencies directly** (lighter, no package install):
+
+```bash
+pip install "openenv-core[core]>=0.2.2" fastapi "uvicorn[standard]" pydantic pandas openai
+```
+
+---
+
+## Configuration
+
+`inference.py` reads three environment variables:
+
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `API_BASE_URL` | No | `https://api.openai.com/v1` | OpenAI-compatible API endpoint |
+| `MODEL_NAME` | No | `gpt-4o-mini` | Model identifier for inference |
+| `HF_TOKEN` | **Yes** (for LLM mode) | — | API key / Hugging Face token |
+
+**If `HF_TOKEN` is not set**, the script automatically falls back to a deterministic scripted policy (no LLM calls). This allows fully reproducible baseline runs without any API credentials.
+
+Set variables on Linux/macOS:
+
+```bash
+export API_BASE_URL="https://api.openai.com/v1"
+export MODEL_NAME="gpt-4o-mini"
+export HF_TOKEN="your-token-here"
+```
+
+Set variables on Windows (PowerShell):
+
+```powershell
+$env:API_BASE_URL = "https://api.openai.com/v1"
+$env:MODEL_NAME   = "gpt-4o-mini"
+$env:HF_TOKEN     = "your-token-here"
+```
+
+---
+
+## Running the Server
+
+The environment exposes a FastAPI server that the client wrapper connects to via WebSocket.
+
+### Local (no Docker)
+
+```bash
+# From the repo root
+uvicorn data_clean_env.server.app:app --host 0.0.0.0 --port 8000 --reload
+```
+
+The server starts at `http://localhost:8000`. Health check: `GET /health`.
+
+### Docker (root Dockerfile)
+
+```bash
+# Build
+docker build -t data-clean-env:latest .
+
+# Run
+docker run -d -p 8000:8000 --name data-clean-env data-clean-env:latest
+
+# Verify
+curl http://localhost:8000/health
+
+# Logs
+docker logs data-clean-env
+
+# Stop
+docker stop data-clean-env && docker rm data-clean-env
+```
+
+### Docker (inner server Dockerfile)
+
+```bash
+docker build -t data-clean-env:server -f data_clean_env/server/Dockerfile data_clean_env/
+docker run -d -p 8000:8000 data-clean-env:server
+```
+
+---
+
+## Running Inference
+
+`inference.py` runs the agent (LLM or scripted) against all three tasks and prints results in the required hackathon format.
+
+```bash
+python inference.py
+```
+
+**Expected output format:**
+
+```
+[START] task=easy env=data_clean_env model=scripted
+[STEP] step=1 action=inspect reward=0.00 done=false error=null
+[STEP] step=2 action=fix_format(revenue) reward=0.00 done=false error=null
+...
+[END] success=true steps=7 rewards=0.00,0.00,0.00,0.00,0.02,0.01,0.88
+```
+
+One `[START]` line per task, one `[STEP]` line per environment step, one `[END]` line when the episode finishes. See `tests/test_inference_output.txt` for the full captured output.
+
+---
+
+## Running Tests
+
+The local validation suite runs all three tasks and edge cases entirely in-process — no server, no Docker, no API keys needed.
+
+```bash
+python test_local.py
+```
+
+**Expected output:**
+
+```
+============================================================
+  Data Cleaning Environment -- Local Validation
+============================================================
+
+[TEST] Easy task ...   Submit OK. Final quality=0.8800
+[TEST] Medium task ... Submit OK. Final quality=0.8620
+[TEST] Hard task ...   Submit OK. Final quality=0.6494
+[TEST] Edge cases ...  All edge cases passed!
+
+  easy    : 0.8800  [PASS]
+  medium  : 0.8620  [PASS]
+  hard    : 0.6494  [PASS]
+  average : 0.7971
+
+  ALL TESTS PASSED!
+```
+
+Full captured output is in `tests/test_validation_output.txt`.
+
+---
+
+## Using the Client API
+
+With the server running, use the async or sync `DataCleanEnv` client:
+
+### Async
 
 ```python
 import asyncio
@@ -43,23 +231,21 @@ async def main():
     async with DataCleanEnv(base_url="http://localhost:8000") as env:
         result = await env.reset()
         print(result.observation.message)
-        
-        # Inspect the data
+
         result = await env.step(DataCleanAction(command="inspect"))
         print(result.observation.column_info)
-        
-        # Fix missing values
+
         result = await env.step(DataCleanAction(
             command="fill_missing",
             column="age",
             params={"strategy": "median"}
         ))
-        print(f"Quality: {result.observation.quality_score}")
+        print(f"Quality: {result.observation.quality_score:.4f}")
 
 asyncio.run(main())
 ```
 
-### Usage (sync)
+### Sync
 
 ```python
 from data_clean_env import DataCleanEnv, DataCleanAction
@@ -70,152 +256,132 @@ with DataCleanEnv(base_url="http://localhost:8000").sync() as env:
     print(result.observation.column_info)
 ```
 
+### In-process (no server)
+
+```python
+from data_clean_env.server.environment import DataCleanEnvironment
+from data_clean_env.models import DataCleanAction
+
+env = DataCleanEnvironment(task_id="easy", seed=42)
+obs = env.reset()
+obs = env.step(DataCleanAction(command="inspect"))
+print(obs.quality_score)
+```
+
+---
+
 ## Action Space
 
-| Command | Parameters | Description |
-|---------|-----------|-------------|
-| `inspect` | `column` (optional) | View dataset info, column types, null counts |
-| `fill_missing` | `column`, `params.strategy` (mean/median/mode/value) | Fill missing values |
-| `cast_type` | `column`, `params.dtype` (int/float/str/datetime) | Cast column type |
-| `remove_duplicates` | — | Remove duplicate rows |
-| `fix_format` | `column`, `params.pattern`, `params.replacement` | Regex-based string cleaning |
-| `filter_outliers` | `column`, `params.method` (iqr/zscore), `params.threshold` | Remove outlier rows |
-| `drop_rows` | `params.condition` (pandas query) | Drop rows matching condition |
-| `rename_column` | `column`, `params.new_name` | Rename a column |
-| `standardize` | `column`, `params.mapping` (dict) | Map inconsistent values to standard ones |
-| `submit` | — | Submit cleaned dataset for final grading |
-
-### DataCleanAction
+| Command | Column | Params | Description |
+|---------|--------|--------|-------------|
+| `inspect` | optional | — | Show dataset shape, dtypes, null counts, sample values |
+| `fill_missing` | required | `strategy`: `mean`/`median`/`mode`/`value`; `value` (for strategy=value) | Fill null values in a column |
+| `cast_type` | required | `dtype`: `int`/`float`/`str`/`datetime` | Cast column to a different type |
+| `remove_duplicates` | — | — | Drop all exact duplicate rows |
+| `fix_format` | required | `pattern` (regex), `replacement` | Regex string replace on a column |
+| `filter_outliers` | required | `method`: `iqr`/`zscore`; `threshold` | Remove rows where column value is an outlier |
+| `drop_rows` | — | `condition` (pandas query expression) | Drop rows matching a boolean condition |
+| `rename_column` | required | `new_name` | Rename a column |
+| `standardize` | required | `mapping`: `{"old": "new", ...}` | Map variant spellings to a canonical value |
+| `submit` | — | — | Submit dataset for final grading (ends episode) |
 
 ```python
 class DataCleanAction(Action):
-    command: str        # One of the commands above
-    column: str | None  # Target column (required for most commands)
-    params: dict        # Additional parameters
+    command: str        # command name (see table above)
+    column: str | None  # target column — required for most commands
+    params: dict        # additional parameters as shown above
 ```
+
+---
 
 ## Observation Space
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `dataset_preview` | str | Text preview of current dataset (first 8 rows) |
-| `column_info` | str | Column types, null counts, unique counts |
-| `message` | str | Feedback from last action |
-| `quality_score` | float | Current data quality (0.0–1.0) |
-| `issues_found` | list[str] | Remaining quality issues |
-| `task_id` | str | Current task (easy/medium/hard) |
-| `task_description` | str | Task objective description |
-| `step_count` | int | Current step number |
-| `max_steps` | int | Maximum allowed steps |
-| `available_commands` | str | Help text for commands |
+```python
+class DataCleanObservation(Observation):
+    dataset_preview: str    # First 8 rows as a formatted text table
+    column_info: str        # Shape, dtype, null count, unique count per column
+    message: str            # Human-readable feedback from last action
+    quality_score: float    # Current quality score 0.0-1.0
+    issues_found: list[str] # Auto-detected remaining quality issues
+    task_id: str            # "easy" | "medium" | "hard"
+    task_description: str   # Full task objective text
+    step_count: int         # Steps taken so far
+    max_steps: int          # Episode step budget
+    available_commands: str # Help text listing all commands
+    done: bool              # True when episode is finished
+    reward: float           # Reward for the last action
+```
+
+---
 
 ## Tasks
 
-### Task 1: Easy — Customer Dataset (20 rows, 5 columns)
+### Task 1: Easy — Customer Dataset
+- **Size:** 20 rows × 5 columns (`name`, `age`, `email`, `revenue`, `signup_date`)
+- **Issues:** 3 missing ages, 2 missing emails, `age` stored as string, `revenue` has `$` prefix
+- **Max steps:** 15
+- **Difficulty:** Beginner
 
-**Issues to fix:**
-- Missing values in `age` (3 rows) and `email` (2 rows)
-- `age` column stored as string instead of integer
-- `revenue` column has `$` prefix (e.g., `$1234.56`)
+### Task 2: Medium — Sales Orders
+- **Size:** ~55 rows × 7 columns (`order_id`, `product`, `quantity`, `unit_price`, `region`, `order_date`, `customer_id`)
+- **Issues:** 5 duplicate rows, inconsistent region names (`north`/`NORTH`/`N.`), 4 missing unit prices, 3 extreme quantity outliers, mixed date formats
+- **Max steps:** 25
+- **Difficulty:** Intermediate
 
-**Max steps:** 15 | **Expected difficulty:** Beginner
+### Task 3: Hard — HR Employee Dataset
+- **Size:** ~88 rows × 10 columns (`emp_id`, `name`, `department`, `title`, `salary`, `hire_date`, `performance_score`, `manager_id`, `email`, `phone`)
+- **Issues:** 8 duplicates, missing salary/performance/department/phone, inconsistent department names, salary outliers (negative/extreme), performance scores outside 1–5, phone format mismatch, date format mix, email casing, self-referencing manager IDs
+- **Max steps:** 40
+- **Difficulty:** Advanced
 
-### Task 2: Medium — Sales Orders (55 rows, 7 columns)
-
-**Issues to fix:**
-- 5 duplicate rows
-- Inconsistent region names (`north`, `NORTH`, `N.` → `North`)
-- 4 missing unit prices
-- 3 extreme outliers in quantity (9000–99999)
-- Mixed date formats (`2024-01-15` vs `01/15/2024`)
-
-**Max steps:** 25 | **Expected difficulty:** Intermediate
-
-### Task 3: Hard — HR Employee Dataset (88 rows, 10 columns)
-
-**Issues to fix:**
-- 8 duplicate rows
-- Missing values across salary, performance, department, phone
-- Inconsistent department names (`Eng`, `engineering`, `ENGINEERING` → `Engineering`)
-- Salary outliers (negative, zero, $1.5M)
-- Performance scores outside 1.0–5.0 range
-- Phone number format inconsistency
-- Date format mix (`YYYY-MM-DD` vs `DD/MM/YYYY`)
-- Email casing inconsistency
-- Self-referencing manager IDs
-
-**Max steps:** 40 | **Expected difficulty:** Advanced
+---
 
 ## Reward Design
 
-| Signal | Value | When |
-|--------|-------|------|
-| Quality improvement | `+Δ × 5.0` | Each action that improves quality |
-| Quality decrease | `-Δ × 5.0` | Actions that hurt quality |
-| Invalid command | `-0.01` | Unknown command |
-| Missing parameter | `-0.01` to `-0.02` | Required parameter not provided |
-| Forbidden operation | `-0.05` | Security violation in query |
-| Submit | `quality_score` | Final submission reward |
-| Timeout | `quality × 0.5` | Exceeded max steps |
+| Signal | Amount | Trigger |
+|--------|--------|---------|
+| Quality improvement | `+delta × 5.0` | Any action that raises the quality score |
+| Quality degradation | `-delta × 5.0` | Any action that lowers the quality score |
+| Unknown command | `-0.01` | Command name not recognised |
+| Missing parameter | `-0.01` to `-0.02` | Required column or param not provided |
+| Security violation | `-0.05` | Forbidden pattern in `drop_rows` condition |
+| Submit | `quality_score` | Final episode reward on explicit submit |
+| Timeout | `quality × 0.5` | Episode ended by exceeding `max_steps` |
 
-The reward function provides **continuous signal over the full trajectory**, not just binary end-of-episode. Each cleaning action yields immediate feedback proportional to its impact on data quality.
+Reward is dense — every step returns a signal proportional to its effect on data quality, not just the final submit.
 
-## Setup & Development
+---
 
-### Local (no Docker)
+## Baseline Scores (Scripted Policy, seed=42)
 
-```bash
-cd data_clean_env
-pip install -e .
-uvicorn data_clean_env.server.app:app --host 0.0.0.0 --port 8000 --reload
-```
+| Task | Final Quality | Steps | Success |
+|------|--------------|-------|---------|
+| Easy | **0.8800** | 7 | true |
+| Medium | **0.8620** | 6 | true |
+| Hard | **0.6494** | 9 | true |
+| **Average** | **0.7971** | — | 3 / 3 |
 
-### Docker
+All scores are deterministic (fixed seed). Full per-step output is in `tests/test_inference_output.txt`. LLM-based agents with frontier models are expected to score higher.
 
-```bash
-cd data_clean_env
-docker build -t data-clean-env:latest -f server/Dockerfile .
-docker run -d -p 8000:8000 data-clean-env:latest
-```
+---
 
-### Run baseline inference
+## OpenEnv Spec Compliance
 
-```bash
-export HF_TOKEN=your-token
-export API_BASE_URL=https://api.openai.com/v1
-export MODEL_NAME=gpt-4o-mini
-python inference.py
-```
+| Requirement | Status |
+|-------------|--------|
+| `openenv.yaml` with spec metadata | ✅ `data_clean_env/openenv.yaml` |
+| Typed `Action` Pydantic model | ✅ `DataCleanAction` |
+| Typed `Observation` Pydantic model | ✅ `DataCleanObservation` |
+| Typed `State` Pydantic model | ✅ `DataCleanState` |
+| `reset()` returns clean initial observation | ✅ |
+| `step(action)` returns observation + reward + done | ✅ |
+| `state` property returns current state | ✅ |
+| 3+ tasks with graders scoring 0.0–1.0 | ✅ easy / medium / hard |
+| Dense reward function | ✅ per-step quality delta |
+| FastAPI server via `create_app` | ✅ `data_clean_env/server/app.py` |
+| Working Dockerfile | ✅ root `Dockerfile` |
 
-**No API key?** The script falls back to a deterministic scripted policy — no external tokens required for a reproducible run.
-
-## Baseline Scores
-
-| Task | Score | Steps Used |
-|------|-------|-----------|
-| Easy | ~0.85 | 5–8 |
-| Medium | ~0.70 | 10–15 |
-| Hard | ~0.55 | 20–30 |
-
-*(Scores from gpt-4o-mini baseline. Frontier models score higher.)*
-
-## Project Structure
-
-```
-data_clean_env/
-├── __init__.py              # Package exports
-├── models.py                # DataCleanAction, DataCleanObservation, DataCleanState
-├── client.py                # DataCleanEnv (EnvClient implementation)
-├── openenv.yaml             # OpenEnv manifest
-├── pyproject.toml           # Package config & dependencies
-├── README.md                # This file
-└── server/
-    ├── __init__.py
-    ├── environment.py       # DataCleanEnvironment (core logic)
-    ├── app.py               # FastAPI application
-    └── Dockerfile           # Container image
-inference.py                 # Baseline inference script
-```
+---
 
 ## License
 

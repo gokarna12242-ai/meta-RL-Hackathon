@@ -8,7 +8,7 @@ Skills/
 Guidelines.txt
 Problem_statement.txt
 *.md
-!data_clean_env/README.md
+!README.md
 .env
 .venv
 node_modules
