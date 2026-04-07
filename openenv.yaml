@@ -1,0 +1,10 @@
+spec_version: 1
+name: data_clean_env
+version: "1.0.0"
+type: space
+runtime: fastapi
+app: server.app:app
+port: 8000
+description: "Data Cleaning Environment — real-world tabular data cleaning for RL agents"
+action: data_clean_env.models.DataCleanAction
+observation: data_clean_env.models.DataCleanObservation

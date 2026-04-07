@@ -28,3 +28,7 @@ Skills/
 # Non-submission files
 Guidelines.txt
 Problem_statement.txt
+
+test_output.txt
+test_stderr.txt
+test_validation.txt
