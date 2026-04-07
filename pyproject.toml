@@ -30,8 +30,8 @@ server = "data_clean_env.server.app:main"
 packages = ["data_clean_env", "data_clean_env.server"]
 
 [tool.setuptools.package-dir]
-data_clean_env = "."
-"data_clean_env.server" = "server"
+"data_clean_env" = "data_clean_env"
+"data_clean_env.server" = "data_clean_env/server"
 
 [tool.setuptools.package-data]
-data_clean_env = ["**/*.yaml", "**/*.yml"]
+"data_clean_env" = ["**/*.yaml", "**/*.yml"]

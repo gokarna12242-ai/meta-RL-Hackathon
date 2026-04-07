@@ -35,15 +35,21 @@ meta-RL-Hackathon/
 ├── Dockerfile                      # Root Dockerfile — builds the HF Space server
 ├── README.md                       # This file (also doubles as HF Space card)
 ├── inference.py                    # Baseline inference script (hackathon entry point)
+├── openenv.yaml                    # Root OpenEnv manifest for validation and deployment
+├── pyproject.toml                  # Root package metadata for the OpenEnv environment
 ├── test_local.py                   # Local validation test suite (no server needed)
 ├── .dockerignore
 ├── .gitignore
+├── server/                         # Root server wrapper for OpenEnv validation
+│   ├── __init__.py
+│   └── app.py                      # Wrapper exposing the nested FastAPI app
 ├── data_clean_env/                 # OpenEnv environment package
 │   ├── __init__.py                 # Package exports (DataCleanEnv, DataCleanAction, ...)
 │   ├── models.py                   # Typed Pydantic models: Action, Observation, State
 │   ├── client.py                   # DataCleanEnv — EnvClient WebSocket wrapper
-│   ├── openenv.yaml                # OpenEnv spec manifest
+│   ├── openenv.yaml                # Nested OpenEnv manifest
 │   ├── pyproject.toml              # Package metadata & dependencies
+│   ├── uv.lock
 │   └── server/
 │       ├── __init__.py
 │       ├── app.py                  # FastAPI application (create_app)
@@ -100,9 +106,9 @@ pip install "openenv-core[core]>=0.2.2" fastapi "uvicorn[standard]" pydantic pan
 |----------|----------|---------|-------------|
 | `API_BASE_URL` | No | `https://api.openai.com/v1` | OpenAI-compatible API endpoint |
 | `MODEL_NAME` | No | `gpt-4o-mini` | Model identifier for inference |
-| `HF_TOKEN` | **Yes** (for LLM mode) | — | API key / Hugging Face token |
+| `HF_TOKEN` / `OPENAI_API_KEY` | **Yes** (for LLM mode) | — | OpenAI or Hugging Face-compatible API token |
 
-**If `HF_TOKEN` is not set**, the script automatically falls back to a deterministic scripted policy (no LLM calls). This allows fully reproducible baseline runs without any API credentials.
+**If neither `HF_TOKEN` nor `OPENAI_API_KEY` is set**, the script automatically falls back to a deterministic scripted policy (no LLM calls). This allows fully reproducible baseline runs without any API credentials.
 
 Set variables on Linux/macOS:
 

@@ -43,7 +43,8 @@ from data_clean_env.models import DataCleanAction
 # ---------------------------------------------------------------------------
 API_BASE_URL = os.environ.get("API_BASE_URL", "https://api.openai.com/v1")
 MODEL_NAME = os.environ.get("MODEL_NAME", "gpt-4o-mini")
-HF_TOKEN = os.environ.get("HF_TOKEN")
+HF_TOKEN = os.environ.get("HF_TOKEN") or os.environ.get("OPENAI_API_KEY")
+OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
 
 # ---------------------------------------------------------------------------
 # LLM client (optional — falls back to scripted policy if unavailable)
@@ -204,23 +205,23 @@ def run_task(task_id: str, seed: int = 42) -> tuple[bool, int, list[float]]:
     Returns (success, steps_taken, list_of_rewards).
     """
     env = DataCleanEnvironment(task_id=task_id, seed=seed)
-    obs = env.reset()
-
-    model_label = MODEL_NAME if USE_LLM else "scripted"
-
-    # --- [START] line -------------------------------------------------
-    print(f"[START] task={task_id} env=data_clean_env model={model_label}")
-
-    messages: list[dict] = [{"role": "system", "content": SYSTEM_PROMPT}] if USE_LLM else []
-    scripted = SCRIPTED_POLICIES.get(task_id, SCRIPTED_POLICIES["easy"])
-    script_idx = 0
-
+    obs = None
     step = 0
     rewards: list[float] = []
     last_error: str | None = None
 
+    model_label = MODEL_NAME if USE_LLM else "scripted"
+    messages: list[dict] = [{"role": "system", "content": SYSTEM_PROMPT}] if USE_LLM else []
+    scripted = SCRIPTED_POLICIES.get(task_id, SCRIPTED_POLICIES["easy"])
+    script_idx = 0
+
     try:
-        while not obs.done and step < obs.max_steps:
+        obs = env.reset()
+
+        # --- [START] line -------------------------------------------------
+        print(f"[START] task={task_id} env=data_clean_env model={model_label}")
+
+        while obs is not None and not obs.done and step < obs.max_steps:
             # ---- decide next action ----
             if USE_LLM:
                 user_msg = (
