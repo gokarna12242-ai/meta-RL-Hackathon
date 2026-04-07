@@ -1,5 +1,5 @@
 spec_version: 1
-name: data_clean_env
+name: metarl
 version: "1.0.0"
 type: space
 runtime: fastapi
