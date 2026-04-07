@@ -44,24 +44,22 @@ from data_clean_env.models import DataCleanAction
 API_BASE_URL = os.environ.get("API_BASE_URL", "https://api.openai.com/v1")
 MODEL_NAME = os.environ.get("MODEL_NAME", "gpt-4o-mini")
 HF_TOKEN = os.environ.get("HF_TOKEN") or os.environ.get("OPENAI_API_KEY")
-OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
 
 # ---------------------------------------------------------------------------
-# LLM client (optional — falls back to scripted policy if unavailable)
+# LLM client — ALWAYS use when HF_TOKEN is available (required by Phase 2)
+# Falls back to scripted policy ONLY when no API key is set at all.
 # ---------------------------------------------------------------------------
 USE_LLM = False
 client = None
 
-if HF_TOKEN:
-    try:
-        from openai import OpenAI
-        client = OpenAI(api_key=HF_TOKEN, base_url=API_BASE_URL)
-        USE_LLM = True
-    except ImportError:
-        pass
+from openai import OpenAI
 
-if not USE_LLM:
-    print("INFO: No HF_TOKEN or openai package unavailable — using scripted policy.", file=sys.stderr)
+if HF_TOKEN:
+    client = OpenAI(api_key=HF_TOKEN, base_url=API_BASE_URL)
+    USE_LLM = True
+    print(f"INFO: Using LLM via {API_BASE_URL} with model {MODEL_NAME}", file=sys.stderr)
+else:
+    print("INFO: No HF_TOKEN set — using scripted policy (local-only mode).", file=sys.stderr)
 
 # ---------------------------------------------------------------------------
 # System prompt for LLM-based agent
@@ -278,11 +276,16 @@ def run_task(task_id: str, seed: int = 42) -> tuple[bool, int, list[float]]:
                         max_tokens=256,
                     )
                     agent_text = response.choices[0].message.content or ""
+                    messages.append({"role": "assistant", "content": agent_text})
+                    action_dict = parse_agent_response(agent_text)
                 except Exception as e:
-                    agent_text = '{"command": "submit"}'
-
-                messages.append({"role": "assistant", "content": agent_text})
-                action_dict = parse_agent_response(agent_text)
+                    # On API error, use scripted fallback for this step
+                    print(f"WARN: LLM call failed ({e}), using scripted fallback", file=sys.stderr)
+                    if script_idx < len(scripted):
+                        action_dict = scripted[script_idx]
+                        script_idx += 1
+                    else:
+                        action_dict = {"command": "submit"}
 
                 # sliding window to keep context manageable
                 if len(messages) > 20:

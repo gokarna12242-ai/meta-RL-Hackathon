@@ -409,7 +409,9 @@ def _compute_quality_score(current: pd.DataFrame, target: pd.DataFrame) -> float
         avg_col = sum(col_scores) / len(col_scores) if col_scores else 0.0
         score += avg_col * 0.30
 
-    return round(min(score, 1.0), 4)
+    # Clamp to strict (0.01, 0.99) — Phase 2 requires scores strictly between 0 and 1
+    score = round(min(max(score, 0.01), 0.99), 4)
+    return score
 
 
 def _detect_issues(df: pd.DataFrame, task_id: str) -> List[str]:
@@ -770,7 +772,7 @@ class DataCleanEnvironment(Environment):
     # ---- Observation helper -----------------------------------------------
 
     def _make_obs(self, message: str, reward: float = 0.0, done: bool = False) -> DataCleanObservation:
-        quality = _compute_quality_score(self._df, self._target) if self._df is not None else 0.0
+        quality = _compute_quality_score(self._df, self._target) if self._df is not None else 0.01
         self._state.quality_score = quality
         if done:
             self._done = True
