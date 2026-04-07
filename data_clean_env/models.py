@@ -35,6 +35,7 @@ class DataCleanObservation(Observation):
     step_count: int = 0
     max_steps: int = 30
     available_commands: str = ""
+    suggested_actions: List[str] = []
 
 
 class DataCleanState(State):

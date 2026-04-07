@@ -1,58 +1,51 @@
 ============================================================
-  Data Cleaning Environment -- Local Validation
+  Data Cleaning Environment — Local Validation
 ============================================================
 
 [TEST] Easy task
-  Reset OK. Quality=0.8725, Issues=3
+  Reset OK. Quality=0.9000, Issues=3
   Inspect OK. Step=1
-  Fix revenue format. Quality=0.8725, Reward=0.0
-  Cast revenue. Quality=0.8725
-  Cast age. Quality=0.8725
-  Fill age. Quality=0.8770
-  Fill email. Quality=0.8800
-  Submit OK. Final quality=0.8800
+  Fix revenue format. Quality=0.9000, Reward=0.0
+  Cast revenue. Quality=0.9000
+  Cast age. Quality=0.9000
+  Fill age. Quality=0.9030
+  Fill email. Quality=0.9050
+  Submit OK. Final quality=0.9050
 
 [TEST] Medium task
-  Reset OK. Quality=0.8274, Issues=2
-  Remove dups. Quality=0.8304
-  Standardize regions. Quality=0.8544
-  Fill unit_price. Quality=0.8560
-  Filter outliers. Quality=0.8620
-  Submit OK. Final quality=0.8620
+  Reset OK. Quality=0.8730, Issues=4
+  Remove dups. Quality=0.8741
+  Fix date format. Quality=0.9298
+  Standardize regions. Quality=0.9475
+  Fill unit_price. Quality=0.9486
+  Filter outliers. Quality=0.9449
+  Submit OK. Final quality=0.9449
 
 [TEST] Hard task
-  Reset OK. Quality=0.6143, Issues=4
-  Remove dups. Quality=0.6143
-  Standardize depts. Quality=0.6368
-  Filter salary outliers. Quality=0.6386
-  Fill salary. Quality=0.6396
-  Fill perf. Quality=0.6407
-  Fill dept. Quality=0.6487
-  Fill phone. Quality=0.6494
-  Submit OK. Final quality=0.6494
+  Reset OK. Quality=0.6893, Issues=9
+  Remove dups. Quality=0.6893
+  Fix date format. Quality=0.7211
+  Standardize depts. Quality=0.7533
+  Standardize titles. Quality=0.7913
+  Normalize email case. Quality=0.7913
+  Normalize phone. Quality=0.8796
+  Filter salary outliers. Quality=0.8782
+  Clip perf scores. Quality=0.8836
+  Fill salary. Quality=0.8843
+  Fill perf. Quality=0.8849
+  Fill dept. Quality=0.8903
+  Fill phone. Quality=0.8908
+  Submit OK. Final quality=0.8908
 
 [TEST] Edge cases
-  Unknown command -> negative reward OK
-  Column not found -> negative reward OK
-  Fill on non-null column -> non-positive reward OK
-  Step after done -> stays done OK
-  Max steps boundary OK
-  Security: forbidden pattern blocked OK
-
-  All edge cases passed!
-
-============================================================
-  RESULTS
-============================================================
-  easy    : 0.8800  [PASS]
-  medium  : 0.8620  [PASS]
-  hard    : 0.6494  [PASS]
-  average : 0.7971
-
-  ALL TESTS PASSED!
-============================================================
-
-Run date    : 2026-04-05
-Python      : 3.11
-Mode        : scripted policy (no LLM)
-Seed        : 42
+Traceback (most recent call last):
+  File "C:\Users\madha\Documents\MetaRL\test_local.py", line 351, in <module>
+    main()
+  File "C:\Users\madha\Documents\MetaRL\test_local.py", line 326, in main
+    test_edge_cases()
+  File "C:\Users\madha\Documents\MetaRL\test_local.py", line 276, in test_edge_cases
+    print("  Unknown command \u2192 negative reward OK")
+  File "C:\Users\madha\AppData\Local\Programs\Python\Python311\Lib\encodings\cp1252.py", line 19, in encode
+    return codecs.charmap_encode(input,self.errors,encoding_table)[0]
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+UnicodeEncodeError: 'charmap' codec can't encode character '\u2192' in position 18: character maps to <undefined>

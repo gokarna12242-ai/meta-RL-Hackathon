@@ -35,24 +35,49 @@ MAX_STEPS_MEDIUM = 25
 MAX_STEPS_HARD = 40
 
 AVAILABLE_COMMANDS = """\
-Available commands:
-  inspect                           — Show dataset info, column types, null counts.
-  fill_missing  column=<col>  params={"strategy":"mean"|"median"|"mode"|"value","value":<v>}
-                                    — Fill missing values in <col>.
-  cast_type     column=<col>  params={"dtype":"int"|"float"|"str"|"datetime"}
-                                    — Cast column to a new type.
-  remove_duplicates                 — Remove duplicate rows.
-  fix_format    column=<col>  params={"pattern":"<regex>","replacement":"<str>"}
-                                    — Regex-based string cleaning on <col>.
-  filter_outliers column=<col> params={"method":"iqr"|"zscore","threshold":<n>}
-                                    — Remove outlier rows in <col>.
-  drop_rows     params={"condition":"<pandas-query>"}
-                                    — Drop rows matching a condition.
-  rename_column column=<col>  params={"new_name":"<name>"}
-                                    — Rename a column.
-  standardize   column=<col>  params={"mapping":{"old1":"new1",...}}
-                                    — Map inconsistent values to standard ones.
-  submit                            — Submit cleaned dataset for grading.
+Respond with a JSON action: {"command": "<name>", "column": "<col_or_null>", "params": {}}
+
+Commands (with examples):
+  inspect — View dataset info or a specific column
+    {"command": "inspect"}
+    {"command": "inspect", "column": "age"}
+
+  fill_missing — Fill null/missing values in a column
+    {"command": "fill_missing", "column": "age", "params": {"strategy": "median"}}
+    Strategies: mean, median, mode, value (requires "value" param)
+
+  cast_type — Convert column to a new data type
+    {"command": "cast_type", "column": "revenue", "params": {"dtype": "float"}}
+    Types: int, float, str, datetime
+
+  remove_duplicates — Remove duplicate rows
+    {"command": "remove_duplicates"}
+
+  fix_format — Regex-based string cleaning or case normalization
+    {"command": "fix_format", "column": "email", "params": {"case": "lower"}}
+    {"command": "fix_format", "column": "price", "params": {"pattern": "^\\\\$", "replacement": ""}}
+    {"command": "fix_format", "column": "date_col", "params": {"pattern": "(\\\\d{2})/(\\\\d{2})/(\\\\d{4})", "replacement": "\\\\3-\\\\1-\\\\2"}}
+
+  filter_outliers — Remove rows containing outlier values
+    {"command": "filter_outliers", "column": "salary", "params": {"method": "iqr", "threshold": 1.5}}
+    Methods: iqr, zscore
+
+  drop_rows — Drop rows matching a pandas query condition
+    {"command": "drop_rows", "params": {"condition": "age < 0"}}
+
+  rename_column — Rename a column
+    {"command": "rename_column", "column": "old_name", "params": {"new_name": "new_name"}}
+
+  standardize — Map inconsistent categorical values to standard ones
+    {"command": "standardize", "column": "region", "params": {"mapping": {"N": "North", "NORTH": "North"}}}
+
+  clip_values — Clip numeric values to a valid min/max range (keeps rows, adjusts values)
+    {"command": "clip_values", "column": "score", "params": {"min": 1.0, "max": 5.0}}
+
+  submit — Submit the cleaned dataset for final grading
+    {"command": "submit"}
+
+Strategy: inspect → identify issues → fix one by one → submit when quality is high.
 """
 
 
@@ -263,9 +288,19 @@ def _generate_hard_dataset(seed: int = 42) -> tuple[pd.DataFrame, pd.DataFrame, 
         if rng.random() < 0.15:
             dirty.loc[idx, "email"] = dirty.loc[idx, "email"].upper() if dirty.loc[idx, "email"] else None
 
-    # 9. Self-referencing manager_id
-    for idx in rng.sample(range(total), 3):
-        dirty.loc[idx, "manager_id"] = dirty.loc[idx, "emp_id"]
+    # 9. Inconsistent title formatting
+    title_variants = {
+        "Junior": ["junior", "Jr", "Jr."],
+        "Mid": ["mid", "Mid-level", "MID"],
+        "Senior": ["senior", "Sr", "Sr."],
+        "Lead": ["lead", "Lead Engineer", "LEAD"],
+        "Manager": ["manager", "Mgr", "Managerial"],
+        "Director": ["director", "Dir", "DIRECTOR"],
+    }
+    for idx in range(total):
+        title = dirty.loc[idx, "title"]
+        if title in title_variants and rng.random() < 0.25:
+            dirty.loc[idx, "title"] = rng.choice(title_variants[title])
 
     target = df.copy()
     issues = {
@@ -277,7 +312,7 @@ def _generate_hard_dataset(seed: int = 42) -> tuple[pd.DataFrame, pd.DataFrame, 
         "phone_format": True,
         "date_format": True,
         "email_case": True,
-        "self_referencing_manager": 3,
+        "inconsistent_titles": True,
     }
     return dirty, target, issues
 
@@ -290,17 +325,18 @@ def _compute_quality_score(current: pd.DataFrame, target: pd.DataFrame) -> float
     """Score 0.0–1.0 how close *current* is to *target*.
 
     Components:
-    - Row count match (15%)
+    - Row count match (10%)
     - Column match (10%)
-    - Missing value reduction (15%)
-    - Row-level matching via best-effort alignment (60%)
+    - Missing value reduction (10%)
+    - Row-level exact matching via best-effort alignment (40%)
+    - Column-level value matching for partial credit (30%)
     """
     score = 0.0
 
     # Row count similarity
     if len(target) > 0:
         row_ratio = 1.0 - abs(len(current) - len(target)) / max(len(target), 1)
-        score += max(row_ratio, 0.0) * 0.15
+        score += max(row_ratio, 0.0) * 0.10
 
     # Column match
     target_cols = set(target.columns)
@@ -312,22 +348,24 @@ def _compute_quality_score(current: pd.DataFrame, target: pd.DataFrame) -> float
     # Missing values — compare null fraction
     current_null_frac = current.isnull().sum().sum() / max(current.size, 1)
     null_improvement = 1.0 - min(current_null_frac, 1.0)
-    score += null_improvement * 0.15
+    score += null_improvement * 0.10
 
-    # Row-level matching on shared columns
+    # Shared columns needed for row and column matching
     shared_cols = sorted(target_cols & current_cols)
-    if shared_cols and len(current) > 0 and len(target) > 0:
-        def normalize_val(v):
-            if pd.isna(v):
-                return "__NULL__"
-            s = str(v).strip().lower()
-            # Normalize numeric strings: remove $ , and compare as float when possible
-            cleaned = s.lstrip("$").replace(",", "")
-            try:
-                return f"__NUM_{float(cleaned):.4f}"
-            except (ValueError, TypeError):
-                return s
 
+    def normalize_val(v):
+        if pd.isna(v):
+            return "__NULL__"
+        s = str(v).strip().lower()
+        # Normalize numeric strings: remove $ , and compare as float when possible
+        cleaned = s.lstrip("$").replace(",", "")
+        try:
+            return f"__NUM_{float(cleaned):.4f}"
+        except (ValueError, TypeError):
+            return s
+
+    # Row-level matching on shared columns (40%)
+    if shared_cols and len(current) > 0 and len(target) > 0:
         def row_to_key(row):
             return tuple(normalize_val(row[c]) for c in shared_cols)
 
@@ -346,25 +384,51 @@ def _compute_quality_score(current: pd.DataFrame, target: pd.DataFrame) -> float
 
         # Score based on fraction of target rows matched
         row_match_score = matched / len(target)
-        score += row_match_score * 0.60
+        score += row_match_score * 0.40
+
+    # Column-level value matching (30%) — partial credit per column
+    if shared_cols and len(current) > 0 and len(target) > 0:
+        col_scores = []
+        for col in shared_cols:
+            target_val_counts: dict = {}
+            for v in target[col]:
+                nv = normalize_val(v)
+                target_val_counts[nv] = target_val_counts.get(nv, 0) + 1
+
+            current_val_counts: dict = {}
+            for v in current[col]:
+                nv = normalize_val(v)
+                current_val_counts[nv] = current_val_counts.get(nv, 0) + 1
+
+            overlap = sum(
+                min(target_val_counts[v], current_val_counts.get(v, 0))
+                for v in target_val_counts
+            )
+            col_scores.append(overlap / len(target))
+
+        avg_col = sum(col_scores) / len(col_scores) if col_scores else 0.0
+        score += avg_col * 0.30
 
     return round(min(score, 1.0), 4)
 
 
 def _detect_issues(df: pd.DataFrame, task_id: str) -> List[str]:
-    """Return a human-readable list of quality issues detected."""
+    """Return a human-readable list of quality issues detected with fix hints."""
     issues: List[str] = []
+
+    # Duplicates
+    dup_count = int(df.duplicated().sum())
+    if dup_count > 0:
+        issues.append(f"{dup_count} duplicate rows detected → use remove_duplicates")
 
     # Missing values
     for col in df.columns:
         null_count = int(df[col].isnull().sum())
         if null_count > 0:
-            issues.append(f"Column '{col}' has {null_count} missing values")
-
-    # Duplicates
-    dup_count = int(df.duplicated().sum())
-    if dup_count > 0:
-        issues.append(f"{dup_count} duplicate rows detected")
+            if df[col].dtype in ("int64", "float64"):
+                issues.append(f"Column '{col}' has {null_count} missing values → fill_missing with strategy='median'")
+            else:
+                issues.append(f"Column '{col}' has {null_count} missing values → fill_missing with strategy='mode' or 'value'")
 
     # Type issues — numeric columns stored as object
     for col in df.columns:
@@ -373,11 +437,149 @@ def _detect_issues(df: pd.DataFrame, task_id: str) -> List[str]:
             if len(non_null) > 0:
                 numeric_count = sum(1 for v in non_null if _is_numeric_string(str(v)))
                 if numeric_count / len(non_null) > 0.7:
-                    issues.append(f"Column '{col}' looks numeric but is stored as text")
+                    # Check if values have $ prefix
+                    dollar_count = sum(1 for v in non_null if str(v).strip().startswith("$"))
+                    if dollar_count > len(non_null) * 0.3:
+                        issues.append(f"Column '{col}' has '$' prefix on numeric values → fix_format to remove '$', then cast_type to float")
+                    else:
+                        issues.append(f"Column '{col}' looks numeric but is stored as text → cast_type with dtype='float' or 'int'")
+
+        # Inconsistent string values (potential standardization needed)
+        if df[col].dtype == object and col in ("region", "department", "title", "status", "category"):
+            unique_vals = df[col].dropna().unique()
+            if len(unique_vals) > 0:
+                # Check for case variations
+                lower_vals = set(str(v).strip().lower() for v in unique_vals)
+                if len(lower_vals) < len(unique_vals):
+                    issues.append(f"Column '{col}' has inconsistent values (case/abbreviation variants) → use standardize with a mapping")
+
+        # Phone format check
+        if col == "phone":
+            invalid_phones = [v for v in df[col].dropna().astype(str) if not _is_standard_phone_format(v)]
+            if invalid_phones:
+                issues.append(f"Column 'phone' has {len(invalid_phones)} values with inconsistent formatting → fix_format with regex")
+
+        # Title format check
+        if col == "title":
+            title_values = [str(v).strip() for v in df[col].dropna()]
+            inconsistent = any(_is_inconsistent_title(v) for v in title_values)
+            if inconsistent:
+                issues.append(f"Column 'title' has inconsistent role/title formatting → use standardize with a mapping")
+
+        # Email case check
+        if col == "email":
+            emails = df[col].dropna().astype(str)
+            upper_emails = sum(1 for e in emails if e != e.lower())
+            if upper_emails > 0:
+                issues.append(f"Column 'email' has {upper_emails} values with uppercase characters → fix_format with case='lower'")
+
+        # Date format inconsistency
+        if col in ("order_date", "hire_date", "signup_date", "date"):
+            date_vals = df[col].dropna().astype(str)
+            slash_dates = sum(1 for v in date_vals if "/" in v)
+            if slash_dates > 0:
+                issues.append(f"Column '{col}' has {slash_dates} dates with inconsistent format (contains '/') → fix_format with regex to standardize to YYYY-MM-DD")
+
+    # Outlier check for numeric columns
+    for col in df.select_dtypes(include=["int64", "float64"]).columns:
+        q1 = df[col].quantile(0.25)
+        q3 = df[col].quantile(0.75)
+        iqr = q3 - q1
+        if iqr > 0:
+            outliers = ((df[col] < q1 - 3 * iqr) | (df[col] > q3 + 3 * iqr)).sum()
+            if outliers > 0:
+                issues.append(f"Column '{col}' has {int(outliers)} extreme outlier values → filter_outliers with method='iqr'")
 
     if not issues:
-        issues.append("No obvious issues detected — consider submitting")
+        issues.append("No obvious issues detected — consider submitting with {\"command\": \"submit\"}")
     return issues
+
+
+def _suggest_next_actions(df: pd.DataFrame, task_id: str) -> List[str]:
+    """Return a prioritized list of suggested JSON actions based on current data state."""
+    suggestions: List[str] = []
+
+    # Priority 1: Remove duplicates
+    dup_count = int(df.duplicated().sum())
+    if dup_count > 0:
+        suggestions.append('{"command": "remove_duplicates"}')
+
+    # Priority 2: Fix format issues (dates, currency symbols, case)
+    for col in df.columns:
+        if col in ("order_date", "hire_date", "signup_date", "date"):
+            date_vals = df[col].dropna().astype(str)
+            slash_dates = sum(1 for v in date_vals if "/" in v)
+            if slash_dates > 0:
+                suggestions.append(f'{{"command": "fix_format", "column": "{col}", "params": {{"pattern": "(\\\\d{{2}})/(\\\\d{{2}})/(\\\\d{{4}})", "replacement": "\\\\3-\\\\2-\\\\1"}}}}')
+
+        if df[col].dtype == object:
+            non_null = df[col].dropna()
+            if len(non_null) > 0:
+                dollar_count = sum(1 for v in non_null if str(v).strip().startswith("$"))
+                if dollar_count > len(non_null) * 0.3:
+                    suggestions.append(f'{{"command": "fix_format", "column": "{col}", "params": {{"pattern": "^\\\\$", "replacement": ""}}}}')
+
+        if col == "email":
+            emails = df[col].dropna().astype(str)
+            upper_emails = sum(1 for e in emails if e != e.lower())
+            if upper_emails > 0:
+                suggestions.append(f'{{"command": "fix_format", "column": "{col}", "params": {{"case": "lower"}}}}')
+
+    # Priority 3: Standardize inconsistent categorical values
+    for col in df.columns:
+        if df[col].dtype == object and col in ("region", "department", "title", "status", "category"):
+            unique_vals = df[col].dropna().unique()
+            lower_vals = set(str(v).strip().lower() for v in unique_vals)
+            if len(lower_vals) < len(unique_vals):
+                suggestions.append(f'{{"command": "standardize", "column": "{col}", "params": {{"mapping": {{...}}}}}}')
+
+    # Priority 4: Cast type for numeric-looking text columns
+    for col in df.columns:
+        if df[col].dtype == object:
+            non_null = df[col].dropna()
+            if len(non_null) > 0:
+                numeric_count = sum(1 for v in non_null if _is_numeric_string(str(v)))
+                if numeric_count / len(non_null) > 0.7:
+                    suggestions.append(f'{{"command": "cast_type", "column": "{col}", "params": {{"dtype": "float"}}}}')
+
+    # Priority 5: Filter outliers
+    for col in df.select_dtypes(include=["int64", "float64"]).columns:
+        q1 = df[col].quantile(0.25)
+        q3 = df[col].quantile(0.75)
+        iqr = q3 - q1
+        if iqr > 0:
+            outliers = ((df[col] < q1 - 3 * iqr) | (df[col] > q3 + 3 * iqr)).sum()
+            if outliers > 0:
+                suggestions.append(f'{{"command": "filter_outliers", "column": "{col}", "params": {{"method": "iqr", "threshold": 1.5}}}}')
+
+    # Priority 6: Fill missing values
+    for col in df.columns:
+        null_count = int(df[col].isnull().sum())
+        if null_count > 0:
+            if df[col].dtype in ("int64", "float64"):
+                suggestions.append(f'{{"command": "fill_missing", "column": "{col}", "params": {{"strategy": "median"}}}}')
+            else:
+                suggestions.append(f'{{"command": "fill_missing", "column": "{col}", "params": {{"strategy": "mode"}}}}')
+
+    # If nothing else, suggest submit
+    if not suggestions:
+        suggestions.append('{"command": "submit"}')
+
+    return suggestions
+
+
+def _is_standard_phone_format(s: str) -> bool:
+    return bool(re.match(r"^\+1-555-\d{4}$", s))
+
+
+def _is_inconsistent_title(s: str) -> bool:
+    normalized = str(s).strip().lower()
+    canonical_titles = {"junior", "mid", "senior", "lead", "manager", "director"}
+    alternate_titles = {
+        "jr", "jr.", "mid-level", "sr", "sr.", "lead engineer",
+        "mgr", "managerial", "dir",
+    }
+    return normalized in alternate_titles and normalized not in canonical_titles
 
 
 def _is_numeric_string(s: str) -> bool:
@@ -467,6 +669,7 @@ class DataCleanEnvironment(Environment):
         self._max_steps = TASKS[task_id]["max_steps"]
         self._done = False
         self._prev_quality = 0.0
+        self._inspected = False
 
     # ---- OpenEnv interface ------------------------------------------------
 
@@ -484,6 +687,7 @@ class DataCleanEnvironment(Environment):
         self._initial_issues = issues
         self._max_steps = task["max_steps"]
         self._done = False
+        self._inspected = False
 
         quality = _compute_quality_score(self._df, self._target)
         self._prev_quality = quality
@@ -496,6 +700,7 @@ class DataCleanEnvironment(Environment):
         )
 
         detected = _detect_issues(self._df, self._task_id)
+        suggestions = _suggest_next_actions(self._df, self._task_id)
 
         return DataCleanObservation(
             dataset_preview=_df_preview(self._df),
@@ -508,6 +713,7 @@ class DataCleanEnvironment(Environment):
             step_count=0,
             max_steps=self._max_steps,
             available_commands=AVAILABLE_COMMANDS,
+            suggested_actions=suggestions,
             done=False,
             reward=0.0,
         )
@@ -545,6 +751,7 @@ class DataCleanEnvironment(Environment):
             "drop_rows": self._cmd_drop_rows,
             "rename_column": self._cmd_rename_column,
             "standardize": self._cmd_standardize,
+            "clip_values": self._cmd_clip_values,
             "submit": self._cmd_submit,
         }.get(cmd)
 
@@ -568,6 +775,7 @@ class DataCleanEnvironment(Environment):
         if done:
             self._done = True
         detected = _detect_issues(self._df, self._task_id) if self._df is not None else []
+        suggestions = _suggest_next_actions(self._df, self._task_id) if (self._df is not None and not done) else []
 
         return DataCleanObservation(
             dataset_preview=_df_preview(self._df) if self._df is not None else "",
@@ -580,6 +788,7 @@ class DataCleanEnvironment(Environment):
             step_count=self._state.step_count,
             max_steps=self._max_steps,
             available_commands=AVAILABLE_COMMANDS,
+            suggested_actions=suggestions,
             done=done,
             reward=reward,
         )
@@ -597,6 +806,10 @@ class DataCleanEnvironment(Environment):
     # ---- Command implementations ------------------------------------------
 
     def _cmd_inspect(self, col: Optional[str], params: dict) -> DataCleanObservation:
+        # Give a small positive reward for the first inspect (encourages exploration)
+        reward = 0.005 if not self._inspected else 0.0
+        self._inspected = True
+
         if col and col in self._df.columns:
             info = f"Column '{col}':\n"
             info += f"  dtype: {self._df[col].dtype}\n"
@@ -608,7 +821,7 @@ class DataCleanEnvironment(Environment):
             msg = info
         else:
             msg = "Dataset overview:\n" + _df_info(self._df)
-        return self._make_obs(msg, reward=0.0)
+        return self._make_obs(msg, reward=reward)
 
     def _cmd_fill_missing(self, col: Optional[str], params: dict) -> DataCleanObservation:
         if not col or col not in self._df.columns:
@@ -684,14 +897,25 @@ class DataCleanEnvironment(Environment):
 
         pattern = params.get("pattern")
         replacement = params.get("replacement", "")
-        if not pattern:
-            return self._make_obs("Missing 'pattern' parameter.", reward=-0.01)
+        case = params.get("case")
+        if not pattern and not case:
+            return self._make_obs("Missing 'pattern' or 'case' parameter.", reward=-0.01)
 
         try:
             mask = self._df[col].notna()
-            self._df.loc[mask, col] = self._df.loc[mask, col].astype(str).str.replace(
-                pattern, replacement, regex=True
-            )
+            if case:
+                if case == "lower":
+                    self._df.loc[mask, col] = self._df.loc[mask, col].astype(str).str.lower()
+                elif case == "upper":
+                    self._df.loc[mask, col] = self._df.loc[mask, col].astype(str).str.upper()
+                elif case == "title":
+                    self._df.loc[mask, col] = self._df.loc[mask, col].astype(str).str.title()
+                else:
+                    return self._make_obs(f"Unknown case transformation '{case}'.", reward=-0.01)
+            if pattern:
+                self._df.loc[mask, col] = self._df.loc[mask, col].astype(str).str.replace(
+                    pattern, replacement, regex=True
+                )
         except Exception as e:
             return self._make_obs(f"Error in fix_format: {e}", reward=-0.02)
 
@@ -796,6 +1020,35 @@ class DataCleanEnvironment(Environment):
 
         reward = self._quality_delta_reward()
         return self._make_obs(f"Standardized values in '{col}'.", reward=reward)
+
+    def _cmd_clip_values(self, col: Optional[str], params: dict) -> DataCleanObservation:
+        """Clip numeric values in a column to a valid [min, max] range."""
+        if not col or col not in self._df.columns:
+            return self._make_obs(f"Column '{col}' not found.", reward=-0.02)
+
+        min_val = params.get("min")
+        max_val = params.get("max")
+        if min_val is None and max_val is None:
+            return self._make_obs("Missing 'min' and/or 'max' parameter.", reward=-0.01)
+
+        try:
+            numeric = pd.to_numeric(self._df[col], errors="coerce")
+            clipped_count = 0
+            if min_val is not None:
+                clipped_count += int((numeric < float(min_val)).sum())
+                numeric = numeric.clip(lower=float(min_val))
+            if max_val is not None:
+                clipped_count += int((numeric > float(max_val)).sum())
+                numeric = numeric.clip(upper=float(max_val))
+            self._df[col] = numeric
+        except Exception as e:
+            return self._make_obs(f"Error clipping values in '{col}': {e}", reward=-0.02)
+
+        reward = self._quality_delta_reward()
+        return self._make_obs(
+            f"Clipped {clipped_count} out-of-range values in '{col}' to [{min_val}, {max_val}].",
+            reward=reward,
+        )
 
     def _cmd_submit(self, col: Optional[str], params: dict) -> DataCleanObservation:
         quality = _compute_quality_score(self._df, self._target)

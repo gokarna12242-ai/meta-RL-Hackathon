@@ -22,8 +22,8 @@ An OpenEnv environment that simulates **real-world tabular data cleaning** — t
 | Aspect | Detail |
 |--------|--------|
 | **Real-world utility** | Data cleaning is the #1 bottleneck in every ML pipeline. Training agents to automate it has immediate production value. |
-| **Rich action space** | 10 distinct cleaning commands with parameters — far more nuanced than binary or discrete actions. |
-| **Dense reward signal** | Quality score improves incrementally after each successful fix, providing shaped reward over the full trajectory. |
+| **Rich action space** | 11 distinct cleaning commands with parameters — far more nuanced than binary or discrete actions. |
+| **Dense reward signal** | 5-component quality scoring with column-level partial credit; shaped reward improves incrementally after each successful fix. |
 | **Difficulty progression** | Three tasks: simple (5-col, 20-row) → complex (10-col, 88-row with referential integrity). |
 
 ---
@@ -181,10 +181,10 @@ python inference.py
 
 ```
 [START] task=easy env=data_clean_env model=scripted
-[STEP] step=1 action=inspect reward=0.00 done=false error=null
+[STEP] step=1 action=inspect reward=0.01 done=false error=null
 [STEP] step=2 action=fix_format(revenue) reward=0.00 done=false error=null
 ...
-[END] success=true steps=7 rewards=0.00,0.00,0.00,0.00,0.02,0.01,0.88
+[END] success=true steps=7 rewards=0.01,0.00,0.00,0.00,0.01,0.01,0.91
 ```
 
 One `[START]` line per task, one `[STEP]` line per environment step, one `[END]` line when the episode finishes. See `tests/test_inference_output.txt` for the full captured output.
@@ -206,15 +206,15 @@ python test_local.py
   Data Cleaning Environment -- Local Validation
 ============================================================
 
-[TEST] Easy task ...   Submit OK. Final quality=0.8800
-[TEST] Medium task ... Submit OK. Final quality=0.8620
-[TEST] Hard task ...   Submit OK. Final quality=0.6494
+[TEST] Easy task ...   Submit OK. Final quality=0.9050
+[TEST] Medium task ... Submit OK. Final quality=0.9449
+[TEST] Hard task ...   Submit OK. Final quality=0.8908
 [TEST] Edge cases ...  All edge cases passed!
 
-  easy    : 0.8800  [PASS]
-  medium  : 0.8620  [PASS]
-  hard    : 0.6494  [PASS]
-  average : 0.7971
+  easy    : 0.9050  [PASS]
+  medium  : 0.9449  [PASS]
+  hard    : 0.8908  [PASS]
+  average : 0.9136
 
   ALL TESTS PASSED!
 ```
@@ -284,11 +284,12 @@ print(obs.quality_score)
 | `fill_missing` | required | `strategy`: `mean`/`median`/`mode`/`value`; `value` (for strategy=value) | Fill null values in a column |
 | `cast_type` | required | `dtype`: `int`/`float`/`str`/`datetime` | Cast column to a different type |
 | `remove_duplicates` | — | — | Drop all exact duplicate rows |
-| `fix_format` | required | `pattern` (regex), `replacement` | Regex string replace on a column |
+| `fix_format` | required | `pattern` (regex), `replacement`, `case` (`lower`/`upper`/`title`) | Regex string replace or case normalization on a column |
 | `filter_outliers` | required | `method`: `iqr`/`zscore`; `threshold` | Remove rows where column value is an outlier |
 | `drop_rows` | — | `condition` (pandas query expression) | Drop rows matching a boolean condition |
 | `rename_column` | required | `new_name` | Rename a column |
 | `standardize` | required | `mapping`: `{"old": "new", ...}` | Map variant spellings to a canonical value |
+| `clip_values` | required | `min`, `max` | Clip numeric values to a valid range (keeps rows, adjusts values) |
 | `submit` | — | — | Submit dataset for final grading (ends episode) |
 
 ```python
@@ -304,18 +305,19 @@ class DataCleanAction(Action):
 
 ```python
 class DataCleanObservation(Observation):
-    dataset_preview: str    # First 8 rows as a formatted text table
-    column_info: str        # Shape, dtype, null count, unique count per column
-    message: str            # Human-readable feedback from last action
-    quality_score: float    # Current quality score 0.0-1.0
-    issues_found: list[str] # Auto-detected remaining quality issues
-    task_id: str            # "easy" | "medium" | "hard"
-    task_description: str   # Full task objective text
-    step_count: int         # Steps taken so far
-    max_steps: int          # Episode step budget
-    available_commands: str # Help text listing all commands
-    done: bool              # True when episode is finished
-    reward: float           # Reward for the last action
+    dataset_preview: str        # First 8 rows as a formatted text table
+    column_info: str            # Shape, dtype, null count, unique count per column
+    message: str                # Human-readable feedback from last action
+    quality_score: float        # Current quality score 0.0-1.0
+    issues_found: list[str]     # Auto-detected issues with actionable fix hints
+    task_id: str                # "easy" | "medium" | "hard"
+    task_description: str       # Full task objective text
+    step_count: int             # Steps taken so far
+    max_steps: int              # Episode step budget
+    available_commands: str     # Full command reference with JSON examples
+    suggested_actions: list[str] # Prioritized JSON action suggestions
+    done: bool                  # True when episode is finished
+    reward: float               # Reward for the last action
 ```
 
 ---
@@ -346,6 +348,7 @@ class DataCleanObservation(Observation):
 
 | Signal | Amount | Trigger |
 |--------|--------|---------|
+| First inspect | `+0.005` | Encourages initial exploration |
 | Quality improvement | `+delta × 5.0` | Any action that raises the quality score |
 | Quality degradation | `-delta × 5.0` | Any action that lowers the quality score |
 | Unknown command | `-0.01` | Command name not recognised |
@@ -358,14 +361,26 @@ Reward is dense — every step returns a signal proportional to its effect on da
 
 ---
 
+## Quality Scoring (5 Components)
+
+| Component | Weight | Description |
+|-----------|--------|-------------|
+| Row count match | 10% | Penalizes wrong number of rows vs target |
+| Column match | 10% | Fraction of target columns present |
+| Missing value reduction | 10% | Lower null fraction = higher score |
+| Exact row matching | 40% | Row-level tuple matching against target |
+| Column-level value matching | 30% | Per-column multiset overlap for partial credit |
+
+---
+
 ## Baseline Scores (Scripted Policy, seed=42)
 
 | Task | Final Quality | Steps | Success |
 |------|--------------|-------|---------|
-| Easy | **0.8800** | 7 | true |
-| Medium | **0.8620** | 6 | true |
-| Hard | **0.6494** | 9 | true |
-| **Average** | **0.7971** | — | 3 / 3 |
+| Easy | **0.9050** | 7 | true |
+| Medium | **0.9449** | 7 | true |
+| Hard | **0.8908** | 14 | true |
+| **Average** | **0.9136** | — | 3 / 3 |
 
 All scores are deterministic (fixed seed). Full per-step output is in `tests/test_inference_output.txt`. LLM-based agents with frontier models are expected to score higher.
 

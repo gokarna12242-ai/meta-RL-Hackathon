@@ -98,6 +98,14 @@ def test_medium():
     obs = env.step(DataCleanAction(command="remove_duplicates"))
     print(f"  Remove dups. Quality={obs.quality_score:.4f}")
 
+    # Fix date format (MM/DD/YYYY → YYYY-MM-DD)
+    obs = env.step(DataCleanAction(
+        command="fix_format",
+        column="order_date",
+        params={"pattern": r"(\d{2})/(\d{2})/(\d{4})", "replacement": r"\3-\1-\2"}
+    ))
+    print(f"  Fix date format. Quality={obs.quality_score:.4f}")
+
     # Standardize regions
     obs = env.step(DataCleanAction(
         command="standardize",
@@ -146,6 +154,14 @@ def test_hard():
     obs = env.step(DataCleanAction(command="remove_duplicates"))
     print(f"  Remove dups. Quality={obs.quality_score:.4f}")
 
+    # Fix date format (DD/MM/YYYY → YYYY-MM-DD)
+    obs = env.step(DataCleanAction(
+        command="fix_format",
+        column="hire_date",
+        params={"pattern": r"(\d{2})/(\d{2})/(\d{4})", "replacement": r"\3-\2-\1"}
+    ))
+    print(f"  Fix date format. Quality={obs.quality_score:.4f}")
+
     # Standardize departments
     obs = env.step(DataCleanAction(
         command="standardize",
@@ -161,6 +177,36 @@ def test_hard():
     ))
     print(f"  Standardize depts. Quality={obs.quality_score:.4f}")
 
+    # Standardize titles
+    obs = env.step(DataCleanAction(
+        command="standardize",
+        column="title",
+        params={"mapping": {
+            "junior": "Junior", "Jr": "Junior", "Jr.": "Junior",
+            "mid-level": "Mid", "MID": "Mid",
+            "senior": "Senior", "Sr": "Senior", "Sr.": "Senior",
+            "lead engineer": "Lead", "LEAD": "Lead",
+            "managerial": "Manager", "Mgr": "Manager", "Dir": "Director",
+        }}
+    ))
+    print(f"  Standardize titles. Quality={obs.quality_score:.4f}")
+
+    # Normalize email casing
+    obs = env.step(DataCleanAction(
+        command="fix_format",
+        column="email",
+        params={"case": "lower"}
+    ))
+    print(f"  Normalize email case. Quality={obs.quality_score:.4f}")
+
+    # Normalize phone formatting
+    obs = env.step(DataCleanAction(
+        command="fix_format",
+        column="phone",
+        params={"pattern": r"^(\+?1-?)(\d{3})-?(\d{4})$", "replacement": "+1-\\2-\\3"}
+    ))
+    print(f"  Normalize phone. Quality={obs.quality_score:.4f}")
+
     # Filter salary outliers
     obs = env.step(DataCleanAction(
         command="filter_outliers",
@@ -168,6 +214,14 @@ def test_hard():
         params={"method": "iqr", "threshold": 2.0}
     ))
     print(f"  Filter salary outliers. Quality={obs.quality_score:.4f}")
+
+    # Clip performance scores to valid range (1.0 - 5.0)
+    obs = env.step(DataCleanAction(
+        command="clip_values",
+        column="performance_score",
+        params={"min": 1.0, "max": 5.0}
+    ))
+    print(f"  Clip perf scores. Quality={obs.quality_score:.4f}")
 
     # Fill missing salary
     obs = env.step(DataCleanAction(

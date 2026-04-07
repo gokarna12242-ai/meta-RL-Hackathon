@@ -73,9 +73,10 @@ to fix data quality issues in tabular datasets.
 You receive observations containing:
 - dataset_preview: first rows of the dataset
 - column_info: column types, null counts, unique counts
-- issues_found: list of detected quality issues
+- issues_found: list of detected quality issues with fix hints
 - quality_score: current score (0.0 - 1.0)
-- available_commands: list of commands you can use
+- suggested_actions: prioritized JSON actions you can use directly
+- available_commands: full command reference with JSON examples
 
 You MUST respond with a single JSON object with these fields:
 {
@@ -85,18 +86,30 @@ You MUST respond with a single JSON object with these fields:
 }
 
 Available commands:
-- inspect (column=optional) — view dataset info
+- inspect — view dataset info or a specific column
 - fill_missing (column=required, params={strategy:"mean"|"median"|"mode"|"value", value:<v>})
 - cast_type (column=required, params={dtype:"int"|"float"|"str"|"datetime"})
 - remove_duplicates — remove duplicate rows
-- fix_format (column=required, params={pattern:"<regex>", replacement:"<str>"})
+- fix_format (column=required, params={pattern:"<regex>", replacement:"<str>", case:"lower"|"upper"|"title"})
 - filter_outliers (column=required, params={method:"iqr"|"zscore", threshold:<n>})
 - drop_rows (params={condition:"<pandas_query>"})
 - rename_column (column=required, params={new_name:"<name>"})
 - standardize (column=required, params={mapping:{"old":"new",...}})
+- clip_values (column=required, params={min:<n>, max:<n>})
 - submit — submit for final grading
 
-Strategy: First inspect the data, identify issues, fix them one by one, then submit.
+Strategy:
+1. First inspect the dataset to understand its structure
+2. Remove duplicates if present
+3. Fix format issues (dates with '/' → regex to YYYY-MM-DD, currency '$' → remove)
+4. Standardize inconsistent categorical values (e.g., 'north' vs 'North')
+5. Fix email case (lowercase), phone formatting
+6. Filter extreme outliers in numeric columns
+7. Fill missing values (numeric: median, categorical: mode)
+8. Submit when quality score is high
+
+IMPORTANT: Check the issues_found and suggested_actions in observations — they tell you
+exactly what to fix next. Copy suggested JSON actions directly when available.
 Always respond with ONLY the JSON object, no extra text.
 """
 
@@ -123,6 +136,8 @@ SCRIPTED_POLICIES: dict[str, list[dict]] = {
     "medium": [
         {"command": "inspect", "column": None, "params": {}},
         {"command": "remove_duplicates", "column": None, "params": {}},
+        {"command": "fix_format", "column": "order_date",
+         "params": {"pattern": r"(\d{2})/(\d{2})/(\d{4})", "replacement": r"\3-\1-\2"}},
         {"command": "standardize", "column": "region",
          "params": {"mapping": {
              "north": "North", "NORTH": "North", "N.": "North",
@@ -139,6 +154,8 @@ SCRIPTED_POLICIES: dict[str, list[dict]] = {
     "hard": [
         {"command": "inspect", "column": None, "params": {}},
         {"command": "remove_duplicates", "column": None, "params": {}},
+        {"command": "fix_format", "column": "hire_date",
+         "params": {"pattern": r"(\d{2})/(\d{2})/(\d{4})", "replacement": r"\3-\2-\1"}},
         {"command": "standardize", "column": "department",
          "params": {"mapping": {
              "engineering": "Engineering", "Eng": "Engineering",
@@ -148,8 +165,22 @@ SCRIPTED_POLICIES: dict[str, list[dict]] = {
              "hr": "HR", "Human Resources": "HR", "H.R.": "HR",
              "finance": "Finance", "FIN": "Finance", "FINANCE": "Finance",
          }}},
+        {"command": "standardize", "column": "title",
+         "params": {"mapping": {
+             "junior": "Junior", "Jr": "Junior", "Jr.": "Junior",
+             "mid-level": "Mid", "MID": "Mid",
+             "senior": "Senior", "Sr": "Senior", "Sr.": "Senior",
+             "lead engineer": "Lead", "LEAD": "Lead",
+             "managerial": "Manager", "Mgr": "Manager", "Dir": "Director",
+         }}},
+        {"command": "fix_format", "column": "email",
+         "params": {"case": "lower"}},
+        {"command": "fix_format", "column": "phone",
+         "params": {"pattern": r"^(\+?1-?)(\d{3})-?(\d{4})$", "replacement": "+1-\\2-\\3"}},
         {"command": "filter_outliers", "column": "salary",
          "params": {"method": "iqr", "threshold": 2.0}},
+        {"command": "clip_values", "column": "performance_score",
+         "params": {"min": 1.0, "max": 5.0}},
         {"command": "fill_missing", "column": "salary",
          "params": {"strategy": "median"}},
         {"command": "fill_missing", "column": "performance_score",
@@ -224,11 +255,17 @@ def run_task(task_id: str, seed: int = 42) -> tuple[bool, int, list[float]]:
         while obs is not None and not obs.done and step < obs.max_steps:
             # ---- decide next action ----
             if USE_LLM:
+                # Build context with actionable hints
+                suggested = ""
+                if hasattr(obs, 'suggested_actions') and obs.suggested_actions:
+                    suggested = "\n\nSuggested next actions (copy directly):\n" + "\n".join(f"  {a}" for a in obs.suggested_actions[:5])
+
                 user_msg = (
                     f"Step {obs.step_count}/{obs.max_steps} | Quality: {obs.quality_score:.4f}\n\n"
                     f"Dataset preview:\n{obs.dataset_preview}\n\n"
                     f"Column info:\n{obs.column_info}\n\n"
-                    f"Issues found:\n" + "\n".join(f"  - {i}" for i in obs.issues_found) + "\n\n"
+                    f"Issues found:\n" + "\n".join(f"  - {i}" for i in obs.issues_found) +
+                    suggested + "\n\n"
                     f"Choose your next action (respond with JSON only):"
                 )
                 messages.append({"role": "user", "content": user_msg})

@@ -1,21 +1,21 @@
 Baseline Scores — Data Cleaning Environment
 ============================================================
-Run date    : 2026-04-05
+Run date    : 2026-04-07
 Python      : 3.11
 Mode        : scripted policy (deterministic, no LLM)
 Seed        : 42
 
 --- test_local.py (validation suite) ---
   Task      Quality Score   Steps   Result
-  easy      0.8800          7       PASS
-  medium    0.8620          6       PASS
-  hard      0.6494          9       PASS
-  average   0.7971          --      ALL PASS
+  easy      0.9050          7       PASS
+  medium    0.9449          7       PASS
+  hard      0.8908          14      PASS
+  average   0.9136          --      ALL PASS
 
 --- inference.py (per-step output, [END] line) ---
-  easy    success=true  steps=7   total_reward=0.91
-  medium  success=true  steps=6   total_reward=1.03
-  hard    success=true  steps=9   total_reward=0.83
+  easy    success=true  steps=7   total_reward=0.94
+  medium  success=true  steps=7   total_reward=1.33
+  hard    success=true  steps=14  total_reward=1.90
 
 --- Notes ---
 * Scores are deterministic — same seed always produces same result.
@@ -23,3 +23,9 @@ Seed        : 42
 * With a frontier LLM (e.g., gpt-4o), scores are expected to be higher.
 * All quality scores are in the required 0.0-1.0 range.
 * All three tasks pass the grader validation gate.
+* Quality scoring uses 5 components: row count (10%), column match (10%),
+  missing value reduction (10%), exact row matching (40%), column-level
+  value matching (30%).
+* 11 cleaning commands available: inspect, fill_missing, cast_type,
+  remove_duplicates, fix_format, filter_outliers, drop_rows, rename_column,
+  standardize, clip_values, submit.
