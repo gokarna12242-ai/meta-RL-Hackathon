@@ -24,6 +24,9 @@ RUN pip install --no-cache-dir --upgrade pip && \
 
 # Copy application code
 COPY data_clean_env/ /app/data_clean_env/
+COPY server/ /app/server/
+COPY openenv.yaml /app/openenv.yaml
+COPY __init__.py /app/__init__.py
 COPY inference.py /app/inference.py
 COPY test_local.py /app/test_local.py
 

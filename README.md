@@ -43,22 +43,16 @@ meta-RL-Hackathon/
 ├── server/                         # Root server wrapper for OpenEnv validation
 │   ├── __init__.py
 │   └── app.py                      # Wrapper exposing the nested FastAPI app
-├── data_clean_env/                 # OpenEnv environment package
-│   ├── __init__.py                 # Package exports (DataCleanEnv, DataCleanAction, ...)
-│   ├── models.py                   # Typed Pydantic models: Action, Observation, State
-│   ├── client.py                   # DataCleanEnv — EnvClient WebSocket wrapper
-│   ├── openenv.yaml                # Nested OpenEnv manifest
-│   ├── pyproject.toml              # Package metadata & dependencies
-│   ├── uv.lock
-│   └── server/
-│       ├── __init__.py
-│       ├── app.py                  # FastAPI application (create_app)
-│       ├── environment.py          # DataCleanEnvironment — all core logic & graders
-│       └── Dockerfile              # Inner Dockerfile for standalone server build
-└── tests/
-    ├── baseline_scores.txt         # Summary of verified baseline scores
-    ├── test_inference_output.txt   # Captured output of inference.py
-    └── test_validation_output.txt  # Captured output of test_local.py
+└── data_clean_env/                 # OpenEnv environment package
+    ├── __init__.py                 # Package exports (DataCleanEnv, DataCleanAction, ...)
+    ├── models.py                   # Typed Pydantic models: Action, Observation, State
+    ├── client.py                   # DataCleanEnv — EnvClient WebSocket wrapper
+    ├── openenv.yaml                # Nested OpenEnv manifest
+    ├── pyproject.toml              # Package metadata & dependencies
+    └── server/
+        ├── __init__.py
+        ├── app.py                  # FastAPI application (create_app)
+        └── environment.py          # DataCleanEnvironment — all core logic & graders
 ```
 
 ---
@@ -160,13 +154,6 @@ docker logs data-clean-env
 docker stop data-clean-env && docker rm data-clean-env
 ```
 
-### Docker (inner server Dockerfile)
-
-```bash
-docker build -t data-clean-env:server -f data_clean_env/server/Dockerfile data_clean_env/
-docker run -d -p 8000:8000 data-clean-env:server
-```
-
 ---
 
 ## Running Inference
@@ -187,7 +174,7 @@ python inference.py
 [END] success=true steps=7 rewards=0.01,0.00,0.00,0.00,0.01,0.01,0.91
 ```
 
-One `[START]` line per task, one `[STEP]` line per environment step, one `[END]` line when the episode finishes. See `tests/test_inference_output.txt` for the full captured output.
+One `[START]` line per task, one `[STEP]` line per environment step, one `[END]` line when the episode finishes.
 
 ---
 
@@ -218,8 +205,6 @@ python test_local.py
 
   ALL TESTS PASSED!
 ```
-
-Full captured output is in `tests/test_validation_output.txt`.
 
 ---
 
@@ -382,7 +367,7 @@ Reward is dense — every step returns a signal proportional to its effect on da
 | Hard | **0.8908** | 14 | true |
 | **Average** | **0.9136** | — | 3 / 3 |
 
-All scores are deterministic (fixed seed). Full per-step output is in `tests/test_inference_output.txt`. LLM-based agents with frontier models are expected to score higher.
+All scores are deterministic (fixed seed). LLM-based agents with frontier models are expected to score higher.
 
 ---
 

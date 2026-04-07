@@ -6,9 +6,17 @@ __pycache__
 OpenEnv/
 Skills/
 Guidelines.txt
+Gidelines.txt
 Problem_statement.txt
 *.md
 !README.md
 .env
 .venv
 node_modules
+tests/
+test_output.txt
+test_stderr.txt
+test_validation.txt
+uv.lock
+data_clean_env/uv.lock
+data_clean_env/server/Dockerfile

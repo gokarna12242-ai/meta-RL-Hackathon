@@ -244,11 +244,11 @@ def run_task(task_id: str, seed: int = 42) -> tuple[bool, int, list[float]]:
     scripted = SCRIPTED_POLICIES.get(task_id, SCRIPTED_POLICIES["easy"])
     script_idx = 0
 
+    # --- [START] line (always emitted at episode begin, even on exception) -
+    print(f"[START] task={task_id} env=data_clean_env model={model_label}")
+
     try:
         obs = env.reset()
-
-        # --- [START] line -------------------------------------------------
-        print(f"[START] task={task_id} env=data_clean_env model={model_label}")
 
         while obs is not None and not obs.done and step < obs.max_steps:
             # ---- decide next action ----
@@ -332,6 +332,12 @@ def run_task(task_id: str, seed: int = 42) -> tuple[bool, int, list[float]]:
     except Exception:
         # Make sure we always emit [END]
         traceback.print_exc(file=sys.stderr)
+
+    # Clean up environment resources (per OpenEnv protocol)
+    try:
+        env.close()
+    except Exception:
+        pass
 
     success = obs.quality_score >= 0.5 if obs is not None else False
 
