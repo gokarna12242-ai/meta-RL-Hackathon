@@ -245,7 +245,7 @@ def run_task(task_id: str, seed: int = 42) -> tuple[bool, int, list[float]]:
     script_idx = 0
 
     # --- [START] line (always emitted at episode begin, even on exception) -
-    print(f"[START] task={task_id} env=data_clean_env model={model_label}")
+    print(f"[START] task={task_id} env=data_clean_env model={model_label}", flush=True)
 
     try:
         obs = env.reset()
@@ -323,7 +323,8 @@ def run_task(task_id: str, seed: int = 42) -> tuple[bool, int, list[float]]:
                 f"action={_action_str(action)} "
                 f"reward={reward:.2f} "
                 f"done={'true' if obs.done else 'false'} "
-                f"error={error_str}"
+                f"error={error_str}",
+                flush=True,
             )
 
             if obs.done:
@@ -339,14 +340,19 @@ def run_task(task_id: str, seed: int = 42) -> tuple[bool, int, list[float]]:
     except Exception:
         pass
 
-    success = obs.quality_score >= 0.5 if obs is not None else False
+    # Compute final score (quality_score, clamped to [0, 1])
+    score = obs.quality_score if obs is not None else 0.0
+    score = min(max(score, 0.0), 1.0)
+    success = score >= 0.5
 
-    # --- [END] line ---
+    # --- [END] line (must include score= per guidelines) ---
     rewards_str = ",".join(f"{r:.2f}" for r in rewards) if rewards else "0.00"
     print(
         f"[END] success={'true' if success else 'false'} "
         f"steps={step} "
-        f"rewards={rewards_str}"
+        f"score={score:.3f} "
+        f"rewards={rewards_str}",
+        flush=True,
     )
 
     return success, step, rewards

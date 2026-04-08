@@ -30,6 +30,9 @@ Guidelines.txt
 Gidelines.txt
 Problem_statement.txt
 
+# Local Claude context (split guidelines)
+guidelines/
+
 # Test artifacts / output logs
 test_output.txt
 test_stderr.txt
