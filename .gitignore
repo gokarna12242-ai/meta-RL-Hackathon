@@ -36,9 +36,5 @@ test_stderr.txt
 test_validation.txt
 tests/
 
-# Lock files (not used in Docker build — pip handles deps)
-uv.lock
-data_clean_env/uv.lock
-
 # Inner Dockerfile (root Dockerfile is canonical)
 data_clean_env/server/Dockerfile
