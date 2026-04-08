@@ -6,9 +6,9 @@ and reports quality scores.  Falls back to a scripted heuristic policy
 when no LLM API key is available so the run is always reproducible.
 
 Environment variables (read at startup):
-    API_BASE_URL  — LLM API endpoint        (default: https://api.openai.com/v1)
-    MODEL_NAME    — model identifier         (default: gpt-4o-mini)
-    HF_TOKEN      — Hugging Face API token   (mandatory for LLM mode)
+    API_BASE_URL  — LLM API endpoint        (default: https://router.huggingface.co/v1)
+    MODEL_NAME    — model identifier         (default: Qwen/Qwen2.5-72B-Instruct)
+    HF_TOKEN      — Hugging Face API token   (mandatory; falls back to API_KEY)
 
 Output format:
     [START] task=<task> env=data_clean_env model=<model>
@@ -43,7 +43,7 @@ from data_clean_env.models import DataCleanAction
 # ---------------------------------------------------------------------------
 API_BASE_URL = os.environ.get("API_BASE_URL", "https://router.huggingface.co/v1")
 MODEL_NAME = os.environ.get("MODEL_NAME", "Qwen/Qwen2.5-72B-Instruct")
-HF_TOKEN = os.environ.get("HF_TOKEN") or os.environ.get("OPENAI_API_KEY")
+HF_TOKEN = os.environ.get("HF_TOKEN") or os.environ.get("API_KEY")
 
 if HF_TOKEN is None:
     raise ValueError("HF_TOKEN environment variable is required")
