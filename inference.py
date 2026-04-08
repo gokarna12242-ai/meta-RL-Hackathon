@@ -230,7 +230,7 @@ def run_task(task_id: str, seed: int = 42) -> tuple[bool, int, list[float]]:
 
     Returns (success, steps_taken, list_of_rewards).
     """
-    env = DataCleanEnvironment(task_id=task_id, seed=seed)
+    env = None
     obs = None
     step = 0
     rewards: list[float] = []
@@ -245,6 +245,7 @@ def run_task(task_id: str, seed: int = 42) -> tuple[bool, int, list[float]]:
     print(f"[START] task={task_id} env=data_clean_env model={model_label}", flush=True)
 
     try:
+        env = DataCleanEnvironment(task_id=task_id, seed=seed)
         obs = env.reset()
 
         while obs is not None and not obs.done and step < obs.max_steps:
@@ -328,29 +329,30 @@ def run_task(task_id: str, seed: int = 42) -> tuple[bool, int, list[float]]:
                 break
 
     except Exception:
-        # Make sure we always emit [END]
         traceback.print_exc(file=sys.stderr)
 
-    # Clean up environment resources (per OpenEnv protocol)
-    try:
-        env.close()
-    except Exception:
-        pass
+    finally:
+        # Clean up environment resources (per OpenEnv protocol)
+        try:
+            if env is not None:
+                env.close()
+        except Exception:
+            pass
 
-    # Compute final score (quality_score, clamped to [0, 1])
-    score = obs.quality_score if obs is not None else 0.0
-    score = min(max(score, 0.0), 1.0)
-    success = score >= 0.5
+        # Compute final score (quality_score, clamped to [0, 1])
+        score = obs.quality_score if obs is not None else 0.0
+        score = min(max(score, 0.0), 1.0)
+        success = score >= 0.5
 
-    # --- [END] line (must include score= per guidelines) ---
-    rewards_str = ",".join(f"{r:.2f}" for r in rewards) if rewards else "0.00"
-    print(
-        f"[END] success={'true' if success else 'false'} "
-        f"steps={step} "
-        f"score={score:.3f} "
-        f"rewards={rewards_str}",
-        flush=True,
-    )
+        # --- [END] line (must include score= per guidelines) ---
+        rewards_str = ",".join(f"{r:.2f}" for r in rewards) if rewards else "0.00"
+        print(
+            f"[END] success={'true' if success else 'false'} "
+            f"steps={step} "
+            f"score={score:.3f} "
+            f"rewards={rewards_str}",
+            flush=True,
+        )
 
     return success, step, rewards
 
@@ -360,16 +362,19 @@ def run_task(task_id: str, seed: int = 42) -> tuple[bool, int, list[float]]:
 # ===================================================================== #
 
 def main():
-    results = {}
-    for task_id in ["easy", "medium", "hard"]:
-        success, steps, rewards = run_task(task_id)
-        results[task_id] = {
-            "success": success,
-            "steps": steps,
-            "total_reward": sum(rewards),
-        }
-
-    return results
+    try:
+        results = {}
+        for task_id in ["easy", "medium", "hard"]:
+            success, steps, rewards = run_task(task_id)
+            results[task_id] = {
+                "success": success,
+                "steps": steps,
+                "total_reward": sum(rewards),
+            }
+        return results
+    except Exception:
+        traceback.print_exc(file=sys.stderr)
+        return {}
 
 
 if __name__ == "__main__":
