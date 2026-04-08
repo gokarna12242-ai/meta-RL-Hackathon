@@ -98,25 +98,25 @@ pip install "openenv-core[core]>=0.2.2" fastapi "uvicorn[standard]" pydantic pan
 
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
-| `API_BASE_URL` | No | `https://api.openai.com/v1` | OpenAI-compatible API endpoint |
-| `MODEL_NAME` | No | `gpt-4o-mini` | Model identifier for inference |
-| `HF_TOKEN` / `OPENAI_API_KEY` | **Yes** (for LLM mode) | — | OpenAI or Hugging Face-compatible API token |
+| `API_BASE_URL` | No | `https://router.huggingface.co/v1` | OpenAI-compatible API endpoint |
+| `MODEL_NAME` | No | `Qwen/Qwen2.5-72B-Instruct` | Model identifier for inference |
+| `HF_TOKEN` / `OPENAI_API_KEY` | **Yes** | — | API token (mandatory — raises `ValueError` if missing) |
 
-**If neither `HF_TOKEN` nor `OPENAI_API_KEY` is set**, the script automatically falls back to a deterministic scripted policy (no LLM calls). This allows fully reproducible baseline runs without any API credentials.
+**`HF_TOKEN` (or `OPENAI_API_KEY`) must be set.** The script raises `ValueError` if neither is provided, per hackathon guidelines. The LLM drives the agent; if an individual API call fails, the script falls back to a deterministic scripted action for that step only.
 
 Set variables on Linux/macOS:
 
 ```bash
-export API_BASE_URL="https://api.openai.com/v1"
-export MODEL_NAME="gpt-4o-mini"
+export API_BASE_URL="https://router.huggingface.co/v1"
+export MODEL_NAME="Qwen/Qwen2.5-72B-Instruct"
 export HF_TOKEN="your-token-here"
 ```
 
 Set variables on Windows (PowerShell):
 
 ```powershell
-$env:API_BASE_URL = "https://api.openai.com/v1"
-$env:MODEL_NAME   = "gpt-4o-mini"
+$env:API_BASE_URL = "https://router.huggingface.co/v1"
+$env:MODEL_NAME   = "Qwen/Qwen2.5-72B-Instruct"
 $env:HF_TOKEN     = "your-token-here"
 ```
 
@@ -171,7 +171,7 @@ python inference.py
 [STEP] step=1 action=inspect reward=0.01 done=false error=null
 [STEP] step=2 action=fix_format(revenue) reward=0.00 done=false error=null
 ...
-[END] success=true steps=7 rewards=0.01,0.00,0.00,0.00,0.01,0.01,0.91
+[END] success=true steps=7 score=0.905 rewards=0.01,0.00,0.00,0.00,0.01,0.01,0.91
 ```
 
 One `[START]` line per task, one `[STEP]` line per environment step, one `[END]` line when the episode finishes.

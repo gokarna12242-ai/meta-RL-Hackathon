@@ -13,7 +13,7 @@ Environment variables (read at startup):
 Output format:
     [START] task=<task> env=data_clean_env model=<model>
     [STEP]  step=<n> action=<action> reward=<r> done=<bool> error=<msg|null>
-    [END]   success=<bool> steps=<n> rewards=<r1,r2,...,rn>
+    [END]   success=<bool> steps=<n> score=<score> rewards=<r1,r2,...,rn>
 
 Usage:
     python inference.py
@@ -41,25 +41,22 @@ from data_clean_env.models import DataCleanAction
 # ---------------------------------------------------------------------------
 # Config — required env vars per hackathon guidelines
 # ---------------------------------------------------------------------------
-API_BASE_URL = os.environ.get("API_BASE_URL", "https://api.openai.com/v1")
-MODEL_NAME = os.environ.get("MODEL_NAME", "gpt-4o-mini")
+API_BASE_URL = os.environ.get("API_BASE_URL", "https://router.huggingface.co/v1")
+MODEL_NAME = os.environ.get("MODEL_NAME", "Qwen/Qwen2.5-72B-Instruct")
 HF_TOKEN = os.environ.get("HF_TOKEN") or os.environ.get("OPENAI_API_KEY")
 
-# ---------------------------------------------------------------------------
-# LLM client — ALWAYS use when HF_TOKEN is available (required by Phase 2)
-# Falls back to scripted policy ONLY when no API key is set at all.
-# ---------------------------------------------------------------------------
-USE_LLM = False
-client = None
+if HF_TOKEN is None:
+    raise ValueError("HF_TOKEN environment variable is required")
 
+# ---------------------------------------------------------------------------
+# LLM client — mandatory per hackathon guidelines (Phase 2 requires LLM).
+# Scripted policies serve as per-step fallback when an individual call fails.
+# ---------------------------------------------------------------------------
 from openai import OpenAI
 
-if HF_TOKEN:
-    client = OpenAI(api_key=HF_TOKEN, base_url=API_BASE_URL)
-    USE_LLM = True
-    print(f"INFO: Using LLM via {API_BASE_URL} with model {MODEL_NAME}", file=sys.stderr)
-else:
-    print("INFO: No HF_TOKEN set — using scripted policy (local-only mode).", file=sys.stderr)
+client = OpenAI(api_key=HF_TOKEN, base_url=API_BASE_URL)
+USE_LLM = True
+print(f"INFO: Using LLM via {API_BASE_URL} with model {MODEL_NAME}", file=sys.stderr)
 
 # ---------------------------------------------------------------------------
 # System prompt for LLM-based agent
